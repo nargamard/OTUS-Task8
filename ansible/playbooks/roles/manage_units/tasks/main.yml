@@ -1,0 +1,189 @@
+---
+# Скопируем файл конфиграции watchlog
+- name: copy watchlog config file
+  copy:
+    src: watchlog
+    dest: /etc/sysconfig/watchlog
+    owner: root
+    group: root
+    mode: '0644'
+
+# Скопируем watchlog.log
+- name: copy watchlog.log
+  copy:
+    src: watchlog.log
+    dest: /var/log/watchlog.log
+    owner: root
+    group: root
+    mode: '0644'
+
+# Скопируем скрипт watchlog.sh с правами на выполнение
+- name: copy watchlog.sh
+  copy:
+    src: watchlog.sh
+    dest: /opt/watchlog.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+# Скопируем юнит watchlog.service
+- name: copy watchlog.service
+  copy:
+    src: watchlog.service
+    dest: /etc/systemd/system/watchlog.service
+    owner: root
+    group: root
+    mode: '0644'
+
+# Скопируем таймер watchlog.timer
+- name: copy watchlog.timer
+  copy:
+    src: watchlog.timer
+    dest: /etc/systemd/system/watchlog.timer
+    owner: root
+    group: root
+    mode: '0644'
+
+# Запустим таймер watchlog.timer
+- name: start watchlog.timer
+  systemd_service:
+    name: watchlog.timer
+    state: started
+    daemon_reload: true
+    enabled: true
+
+# Запустим сервис watchlog.service
+- name: start watchlog.service
+  systemd_service:
+    name: watchlog.service
+    state: started
+
+####################################
+
+# Поменяем зеркала, чтобы можно было пакеты установить
+- name: change mirrors
+  shell: sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+
+# Установим spawn-fcgi
+- name: install spawn-fcgi
+  yum:
+    name: "{{ packages }}"
+    update_cache: true
+  vars:
+    packages:
+    - epel-release
+
+- name: install spawn-fcgi
+  yum:
+    name: "{{ packages }}"
+    update_cache: true
+  vars:
+    packages:
+    - spawn-fcgi
+    - php
+    - php-cli
+    - mod_fcgid
+    - httpd
+
+# Скопируем Init скрипт spawn-fcgi с раскомментированными строками с переменными
+- name: copy spawn-fcgi
+  copy:
+    src: spawn-fcgi
+    dest: /etc/sysconfig/spawn-fcgi
+    owner: root
+    group: root
+    mode: '0644'
+
+# Скопируем unit spawn-fcgi
+- name: copy spawn-fcgi
+  copy:
+    src: spawn-fcgi.service
+    dest: /etc/systemd/system/spawn-fcgi.service
+    owner: root
+    group: root
+    mode: '0644'
+
+# Запустим сервис spawn-fcgi
+- name: start spawn-fcgi
+  systemd_service:
+    name: spawn-fcgi
+    state: started
+    enabled: true
+
+# Посмотрим статус spawn-fcgi и сохраним его
+- name: get spawn-fcgi status
+  shell: echo -e "\n\n Посмотрим состояние сервиса spawn-fcgi \n" >> /tmp/logfile && systemctl status spawn-fcgi >> /tmp/logfile
+
+# Подождём 1 минуту
+- name: wait for 1 min 
+  pause:
+    minutes: 1
+
+# Посмотрим результат работы сервиса watchlog и сохраним его
+- name: Get watchlog log
+  shell: echo -e "\n\n Посмотрим лог \n" >> /tmp/logfile && tail -n 20 /var/log/messages >> /tmp/logfile
+
+#########################
+
+# Скопируем исправленный юнит апача, куда добавлен параметр %I
+- name: copy httpd.service
+  copy:
+    src: httpd.service
+    dest: /usr/lib/systemd/system/httpd.service
+    owner: root
+    group: root
+    mode: '0644'
+
+# Скопируем httpd-first
+- name: copy httpd-first
+  copy:
+    src: httpd-first
+    dest: /etc/sysconfig/httpd-first
+    owner: apache
+    group: apache
+    mode: '0644'
+
+# Скопируем httpd-second
+- name: copy httpd-second
+  copy:
+    src: httpd-second
+    dest: /etc/sysconfig/httpd-second
+    owner: apache
+    group: apache
+    mode: '0644'
+
+# Скопируем first.conf
+- name: copy first.conf
+  copy:
+    src: first.conf
+    dest: /etc/httpd/conf/first.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+# Скопируем first.conf
+- name: copy second.conf
+  copy:
+    src: second.conf
+    dest: /etc/httpd/conf/second.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+# Запустим сервис httpd@first
+- name: start httpd@first
+  shell: systemctl start httpd@first
+
+# Запустим сервис httpd@first
+- name: start httpd@second
+  shell: systemctl start httpd@second
+
+# Проверим, что оба сервиса работают и висят на разнных портах
+- name: Get ss -tnulp | grep httpd
+  shell: echo -e "\n\n Посмотрим ss -tnulp | grep httpd \n" >> /tmp/logfile && ss -tnulp | grep httpd >> /tmp/logfile
+
+# Получим лог-файл с vagrant-ВМ
+- name: fetch logfile
+  fetch:
+    src: /tmp/logfile
+    dest: ../
